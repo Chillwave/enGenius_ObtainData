@@ -1,4 +1,4 @@
-# enGenius_MSP_NetTools
+# enGenius_obtainData
 
 Python scripts to export SSIDs, switches, VLANs, and licenses from EnGenius Cloud to CSV.
 

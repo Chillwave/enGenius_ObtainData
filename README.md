@@ -1,6 +1,6 @@
-# enGenius_MSP_NetTools
+# enGenius_obtainData
 
-Python scripts to export SSIDs, APs, switches, VLANs, and licenses from EnGenius Cloud to CSV.
+Python scripts to export SSIDs, APs, switches, VLANs, licenses, and site WAN IPs from EnGenius Cloud to CSV.
 
 ## Requirements
 
@@ -83,6 +83,22 @@ python3 engenius_license_export.py
 **Output:** `engenius_licenses_TIMESTAMP.csv`
 
 **Columns:** organization, network_name, device_name, device_type, model, mac, serial_number, license_status, expiration_date, days_until_expiration
+
+---
+
+### engenius_site_wan_export.py
+
+Exports WAN IP for each site/network with geolocation data (city, state, ISP).
+
+```bash
+python3 engenius_site_wan_export.py
+```
+
+**Output:** `engenius_site_wan_TIMESTAMP.csv`
+
+**Columns:** organization, hierarchy_view, network, wan_ip, city, state, isp, all_expired
+
+*Note: Uses ipinfo.io for geolocation (free, no API key needed). The `all_expired` column flags sites where all switches have expired licenses (WAN IP data may be stale).*
 
 ---
 

@@ -1,6 +1,6 @@
-# enGenius_obtainData
+# enGenius_MSP_NetTools
 
-Python scripts to export SSIDs, switches, VLANs, and licenses from EnGenius Cloud to CSV.
+Python scripts to export SSIDs, APs, switches, VLANs, and licenses from EnGenius Cloud to CSV.
 
 ## Requirements
 
@@ -36,21 +36,21 @@ python3 engenius_ssid_export.py
 
 **Output:** `engenius_ssids_TIMESTAMP.csv`
 
-| Column | Description |
-|--------|-------------|
-| organization | Organization name |
-| hierarchy_view | Hierarchy view name |
-| network | Network/location name |
-| ssid_name | SSID name |
-| ssid_id | EnGenius internal SSID ID |
-| enabled | Whether SSID is enabled |
-| vlan_id | VLAN ID assigned to SSID |
-| auth_type | Authentication type (WPA2-PSK, WPA3-Personal, disabled, etc.) |
-| hidden | Whether SSID is hidden |
-| client_isolation | Client isolation enabled |
-| band_2_4g | 2.4GHz band enabled |
-| band_5g | 5GHz band enabled |
-| band_6g | 6GHz band enabled |
+**Columns:** organization, hierarchy_view, network, ssid_name, ssid_id, enabled, vlan_id, auth_type, hidden, client_isolation, band_2_4g, band_5g, band_6g
+
+---
+
+### engenius_ap_export.py
+
+Exports all wireless access point (WAP) inventory across all networks.
+
+```bash
+python3 engenius_ap_export.py
+```
+
+**Output:** `engenius_aps_TIMESTAMP.csv`
+
+**Columns:** organization, hierarchy_view, network, ap_name, ap_id, model, mac, serial_number
 
 ---
 
@@ -64,26 +64,11 @@ python3 engenius_switch_vlan_export.py
 
 **Output:** `engenius_switches_TIMESTAMP.csv`
 
-| Column | Description |
-|--------|-------------|
-| organization | Organization name |
-| hierarchy_view | Hierarchy view name |
-| network | Network/location name |
-| switch_name | Switch device name |
-| switch_id | EnGenius internal switch ID |
-| model | Switch model number |
-| mac | MAC address |
-| serial_number | Serial number |
+**Columns:** organization, hierarchy_view, network, switch_name, switch_id, model, mac, serial_number
 
 **Output:** `engenius_vlans_TIMESTAMP.csv`
 
-| Column | Description |
-|--------|-------------|
-| organization | Organization name |
-| hierarchy_view | Hierarchy view name |
-| network | Network/location name |
-| vlan_id | VLAN ID number |
-| vlan_name | VLAN name |
+**Columns:** organization, hierarchy_view, network, vlan_id, vlan_name
 
 ---
 
@@ -97,18 +82,7 @@ python3 engenius_license_export.py
 
 **Output:** `engenius_licenses_TIMESTAMP.csv`
 
-| Column | Description |
-|--------|-------------|
-| organization | Organization name |
-| network_name | Network/location name |
-| device_name | Device name |
-| device_type | Device type (ap, switch, gateway, pdu, etc.) |
-| model | Device model number |
-| mac | MAC address |
-| serial_number | Serial number |
-| license_status | License status (active, expired, merging, etc.) |
-| expiration_date | License expiration date (YYYY-MM-DD) |
-| days_until_expiration | Days until expiration (negative = already expired) |
+**Columns:** organization, network_name, device_name, device_type, model, mac, serial_number, license_status, expiration_date, days_until_expiration
 
 ---
 
@@ -118,17 +92,6 @@ python3 engenius_license_export.py
 - **Base URL:** `https://falcon.production.engenius.ai/v2`
 - **Auth Header:** `api-key: YOUR_KEY`
 - **Official Examples:** https://github.com/EnGenius-Cloud-Team/restful-api-example
-
-### Endpoints Used
-
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /user/orgs` | List organizations |
-| `GET /orgs/{orgId}/hvs` | List hierarchy views & networks |
-| `GET /orgs/{orgId}/inventory` | Device inventory with license info |
-| `GET /orgs/{orgId}/hvs/{hvId}/networks/{netId}/policy/aps/ssid-profiles` | SSID configs |
-| `GET /orgs/{orgId}/hvs/{hvId}/networks/{netId}/devices/switches` | Switch devices |
-| `GET /orgs/{orgId}/hvs/{hvId}/networks/{netId}/policy/vlans` | VLAN configs |
 
 ## Troubleshooting
 

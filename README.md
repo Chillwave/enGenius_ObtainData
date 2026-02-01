@@ -101,6 +101,16 @@ python3 engenius_site_wan_export.py
 *Note: Uses ipinfo.io for geolocation (free, no API key needed). The `all_expired` column flags sites where all switches have expired licenses (WAN IP data may be stale).*
 
 ---
+### engenius_switch_extender_export.py
+
+Exports all switch extenders from the organization inventory. Switch extenders have no dedicated `/devices/` endpoint and no online/offline status in the EnGenius API, so this queries the inventory directly with `?type=switch_extender`.
+```bash
+python3 engenius_switch_extender_export.py
+```
+
+**Output:** `engenius_switch_extenders_TIMESTAMP.csv`
+
+**Columns:** organization, network, name, model, mac, serial_number, license_status, license_type, expiration_date, days_until_expiration, registered_by
 
 ## API Reference
 

@@ -114,5 +114,6 @@ python3 engenius_site_wan_export.py
 | Error | Solution |
 |-------|----------|
 | "API Key Is Invalid" | Check `api_key.txt` has no extra whitespace, regenerate key if needed |
+| "406 Not Acceptable" | Expired API key or unauthorized IP. Regenerate key and check IP allowlist |
 | "402 Payment Required" | API requires Pro license on your organization |
 | Many 503 errors | EnGenius API temporarily unavailable, scripts retry 3x automatically |

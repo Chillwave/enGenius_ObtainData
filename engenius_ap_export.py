@@ -118,7 +118,7 @@ for org in orgs:
             print(f"    [NET] {net_name}...", end=" ", flush=True)
             
             # Get APs
-            aps = api_get(f"/orgs/{org_id}/hvs/{hv_id}/networks/{net_id}/devices/aps")
+            aps = api_get(f"/orgs/{org_id}/hvs/{hv_id}/networks/{net_id}/devices/aps", params={"count": 500})
             
             if not aps:
                 print("(no APs)")

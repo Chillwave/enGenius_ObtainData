@@ -125,7 +125,7 @@ for org in orgs:
             print(f"    [NET] {net_name}...", end=" ", flush=True)
             
             # Get SSIDs
-            ssids = api_get(f"/orgs/{org_id}/hvs/{hv_id}/networks/{net_id}/policy/aps/ssid-profiles")
+            ssids = api_get(f"/orgs/{org_id}/hvs/{hv_id}/networks/{net_id}/policy/aps/ssid-profiles", params={"count": 500})
             
             if not ssids:
                 print("(no data)")

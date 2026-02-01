@@ -129,7 +129,7 @@ for org in orgs:
             # =========================================================
             print(f"    [NET] {net_name} - Switches...", end=" ", flush=True)
             
-            switches = api_get(f"/orgs/{org_id}/hvs/{hv_id}/networks/{net_id}/devices/switches")
+            switches = api_get(f"/orgs/{org_id}/hvs/{hv_id}/networks/{net_id}/devices/switches", params={"count": 500})
             
             if switches:
                 if isinstance(switches, dict):
@@ -158,7 +158,7 @@ for org in orgs:
             # =========================================================
             print("VLANs...", end=" ", flush=True)
             
-            vlans = api_get(f"/orgs/{org_id}/hvs/{hv_id}/networks/{net_id}/policy/vlans")
+            vlans = api_get(f"/orgs/{org_id}/hvs/{hv_id}/networks/{net_id}/policy/vlans", params={"count": 500})
             
             if vlans:
                 # Response is {"vlans": [...]} or just a list

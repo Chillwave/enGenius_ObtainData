@@ -1,151 +1,140 @@
 #!/usr/bin/env python3
 """
 Combine EnGenius export CSVs into a single Excel workbook.
-Each CSV becomes a tab. Tab names derived from filenames.
-
-Usage:
-    python3 combine_csvs_to_xlsx.py <folder_path>
-    python3 combine_csvs_to_xlsx.py engenius_export_xyz
+Usage: python3 combine_csvs_to_xlsx.py <folder_path>
 Requires: openpyxl
 """
-
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-import csv
-import glob
+import sys, os, csv, glob
 from datetime import datetime
 
 try:
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, numbers
     from openpyxl.utils import get_column_letter
 except ImportError:
-    print("ERROR: openpyxl not installed")
-    print("  pip install openpyxl")
-    sys.exit(1)
+    print("pip install openpyxl"); sys.exit(1)
+
+SKIP_COLS = {"organization", "hierarchy_view"}
+
+ABBREV = {
+    "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR",
+    "California": "CA", "Colorado": "CO", "Connecticut": "CT", "Delaware": "DE",
+    "Florida": "FL", "Georgia": "GA", "Hawaii": "HI", "Idaho": "ID",
+    "Illinois": "IL", "Indiana": "IN", "Iowa": "IA", "Kansas": "KS",
+    "Kentucky": "KY", "Louisiana": "LA", "Maine": "ME", "Maryland": "MD",
+    "Massachusetts": "MA", "Michigan": "MI", "Minnesota": "MN", "Mississippi": "MS",
+    "Missouri": "MO", "Montana": "MT", "Nebraska": "NE", "Nevada": "NV",
+    "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM", "New York": "NY",
+    "North Carolina": "NC", "North Dakota": "ND", "Ohio": "OH", "Oklahoma": "OK",
+    "Oregon": "OR", "Pennsylvania": "PA", "Rhode Island": "RI", "South Carolina": "SC",
+    "South Dakota": "SD", "Tennessee": "TN", "Texas": "TX", "Utah": "UT",
+    "Vermont": "VT", "Virginia": "VA", "Washington": "WA", "West Virginia": "WV",
+    "Wisconsin": "WI", "Wyoming": "WY"
+}
 
 
-def csv_to_tab_name(filename):
-    """Convert 'Florida - Wireless APs.csv' -> 'FL - APs' style tab name."""
-    name = os.path.splitext(filename)[0]  # strip .csv
-
-    # State abbreviation map
-    abbrev = {
-        "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR",
-        "California": "CA", "Colorado": "CO", "Connecticut": "CT", "Delaware": "DE",
-        "Florida": "FL", "Georgia": "GA", "Hawaii": "HI", "Idaho": "ID",
-        "Illinois": "IL", "Indiana": "IN", "Iowa": "IA", "Kansas": "KS",
-        "Kentucky": "KY", "Louisiana": "LA", "Maine": "ME", "Maryland": "MD",
-        "Massachusetts": "MA", "Michigan": "MI", "Minnesota": "MN", "Mississippi": "MS",
-        "Missouri": "MO", "Montana": "MT", "Nebraska": "NE", "Nevada": "NV",
-        "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM", "New York": "NY",
-        "North Carolina": "NC", "North Dakota": "ND", "Ohio": "OH", "Oklahoma": "OK",
-        "Oregon": "OR", "Pennsylvania": "PA", "Rhode Island": "RI", "South Carolina": "SC",
-        "South Dakota": "SD", "Tennessee": "TN", "Texas": "TX", "Utah": "UT",
-        "Vermont": "VT", "Virginia": "VA", "Washington": "WA", "West Virginia": "WV",
-        "Wisconsin": "WI", "Wyoming": "WY"
-    }
-
-    for state, ab in abbrev.items():
+def tab_name(filename):
+    name = os.path.splitext(filename)[0]
+    for state, ab in ABBREV.items():
         if name.startswith(state):
-            name = name.replace(state, ab, 1)
-            break
+            name = name.replace(state, ab, 1); break
+    return name.replace("Wireless APs", "APs")[:31]
 
-    # Shorten "Wireless APs" -> "APs"
-    name = name.replace("Wireless APs", "APs")
 
-    # Excel tab names max 31 chars
-    return name[:31]
+def try_date(val):
+    """Try to parse a date string and return a datetime object, or None."""
+    if not val: return None
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%Y-%m-%dT%H:%M:%S"):
+        try: return datetime.strptime(val.strip(), fmt)
+        except: continue
+    return None
 
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python3 combine_csvs_to_xlsx.py <csv_folder>")
-        sys.exit(1)
+        print("Usage: python3 combine_csvs_to_xlsx.py <csv_folder>"); sys.exit(1)
 
     folder = sys.argv[1]
     if not os.path.isdir(folder):
-        print(f"ERROR: '{folder}' is not a directory")
-        sys.exit(1)
+        print(f"ERROR: '{folder}' not a directory"); sys.exit(1)
 
     csv_files = sorted(glob.glob(os.path.join(folder, "*.csv")))
     if not csv_files:
-        print(f"No CSV files found in {folder}")
-        sys.exit(1)
+        print(f"No CSVs in {folder}"); sys.exit(1)
 
-    print(f"Found {len(csv_files)} CSV(s) in {folder}")
+    print(f"Found {len(csv_files)} CSV(s)")
 
     wb = Workbook()
-    wb.remove(wb.active)  # remove default sheet
+    wb.remove(wb.active)
 
-    # Styles
-    header_font = Font(bold=True, color="FFFFFF", size=11)
-    header_fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
-    header_align = Alignment(horizontal="center", vertical="center")
-    thin_border = Border(
-        left=Side(style="thin", color="D9D9D9"),
-        right=Side(style="thin", color="D9D9D9"),
-        top=Side(style="thin", color="D9D9D9"),
-        bottom=Side(style="thin", color="D9D9D9")
-    )
+    hdr_font = Font(bold=True, color="FFFFFF", size=11)
+    hdr_fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
+    hdr_align = Alignment(horizontal="center", vertical="center")
+    border = Border(*(Side(style="thin", color="D9D9D9"),) * 4)
     expired_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
     expiring_fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
     online_font = Font(color="006100")
     offline_font = Font(color="9C0006")
 
     for csv_path in csv_files:
-        filename = os.path.basename(csv_path)
-        tab_name = csv_to_tab_name(filename)
-        print(f"  {filename} -> [{tab_name}]")
-
-        ws = wb.create_sheet(title=tab_name)
+        fname = os.path.basename(csv_path)
+        tname = tab_name(fname)
+        print(f"  {fname} -> [{tname}]")
+        ws = wb.create_sheet(title=tname)
 
         with open(csv_path, "r", newline="", encoding="utf-8-sig") as f:
             reader = csv.reader(f)
-            for row_idx, row in enumerate(reader, 1):
-                for col_idx, value in enumerate(row, 1):
-                    cell = ws.cell(row=row_idx, column=col_idx, value=value)
-                    cell.border = thin_border
+            header = next(reader)
 
-                    if row_idx == 1:
-                        # Header row
-                        cell.font = header_font
-                        cell.fill = header_fill
-                        cell.alignment = header_align
+            # Figure out which column indices to keep
+            keep = [i for i, h in enumerate(header) if h.strip().lower() not in SKIP_COLS]
+
+            # Write header
+            for out_col, src_col in enumerate(keep, 1):
+                cell = ws.cell(row=1, column=out_col, value=header[src_col])
+                cell.font = hdr_font; cell.fill = hdr_fill; cell.alignment = hdr_align; cell.border = border
+
+            # Track which output columns are date columns
+            date_cols = set()
+            for out_col, src_col in enumerate(keep, 1):
+                if "expiration" in header[src_col].lower() and "days" not in header[src_col].lower():
+                    date_cols.add(out_col)
+
+            # Write data
+            for row_idx, row in enumerate(reader, 2):
+                for out_col, src_col in enumerate(keep, 1):
+                    val = row[src_col] if src_col < len(row) else ""
+                    cell = ws.cell(row=row_idx, column=out_col)
+                    cell.border = border
+
+                    # Date columns -> actual date with short format
+                    if out_col in date_cols:
+                        dt = try_date(val)
+                        if dt:
+                            cell.value = dt
+                            cell.number_format = "M/D/YYYY"
+                        else:
+                            cell.value = val
                     else:
-                        # Color-code license status
-                        if cell.value == "EXPIRED":
-                            cell.fill = expired_fill
-                        elif cell.value == "EXPIRING SOON":
-                            cell.fill = expiring_fill
-                        elif cell.value == "Online":
-                            cell.font = online_font
-                        elif cell.value == "Offline":
-                            cell.font = offline_font
+                        cell.value = val
 
-        # Auto-width columns
+                    # Color coding
+                    if val == "EXPIRED": cell.fill = expired_fill
+                    elif val == "EXPIRING SOON": cell.fill = expiring_fill
+                    elif val == "Online": cell.font = online_font
+                    elif val == "Offline": cell.font = offline_font
+
+        # Auto-width
         for col in range(1, ws.max_column + 1):
-            max_len = 0
-            col_letter = get_column_letter(col)
-            for row in range(1, ws.max_row + 1):
-                val = ws.cell(row=row, column=col).value
-                if val:
-                    max_len = max(max_len, len(str(val)))
-            ws.column_dimensions[col_letter].width = min(max_len + 3, 40)
+            mx = max((len(str(ws.cell(r, col).value or "")) for r in range(1, ws.max_row + 1)), default=8)
+            ws.column_dimensions[get_column_letter(col)].width = min(mx + 3, 40)
 
-        # Freeze header row
         ws.freeze_panes = "A2"
-        # Auto-filter
         ws.auto_filter.ref = f"A1:{get_column_letter(ws.max_column)}{ws.max_row}"
 
-    # Output
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = os.path.join(os.path.dirname(folder.rstrip("/\\")), f"EnGenius_Device_Report_{timestamp}.xlsx")
-    wb.save(output_path)
-    print(f"\nSaved: {output_path}")
-    print(f"Tabs: {len(wb.sheetnames)}")
+    out_path = os.path.join(os.path.dirname(folder.rstrip("/\\")), f"EnGenius_Device_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+    wb.save(out_path)
+    print(f"\nSaved: {out_path} ({len(wb.sheetnames)} tabs)")
 
 
 if __name__ == "__main__":

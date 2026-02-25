@@ -16,61 +16,78 @@ DEBUG = "--debug" in sys.argv
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-# ─── API ─────────────────────────────────────────────────────────────────────
-
 def load_api_key():
-    path = os.path.join(SCRIPT_DIR, "api_key.txt")
-    if not os.path.exists(path):
-        print(f"ERROR: {path} not found"); sys.exit(1)
-    key = open(path).read().strip().strip('"').strip("'")
-    print(f"  Key: {key[:8]}...{key[-4:]} ({len(key)} chars)")
-    return key
+    for f in ["api_key.txt", "apikey.txt", "API_KEY.txt"]:
+        p = os.path.join(SCRIPT_DIR, f)
+        if os.path.exists(p):
+            key = open(p).read().strip().strip('"').strip("'")
+            print(f"  Key: {key[:8]}...{key[-4:]} ({len(key)} chars) from {f}")
+            return key
+    print("ERROR: No api_key.txt found"); sys.exit(1)
 
 
-def api_get(session, endpoint, params=None):
+# Module-level session, same pattern as working scripts
+API_KEY = load_api_key()
+session = requests.Session()
+session.headers.update({
+    "api-key": API_KEY,
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+})
+
+
+def api_get(endpoint, params=None):
+    """Matches the working script's api_get signature exactly."""
     url = f"{BASE_URL}{endpoint}"
     for attempt in range(MAX_RETRIES):
         try:
-            if DEBUG: print(f"    [DEBUG] GET {url}")
+            if DEBUG: print(f"    [DEBUG] GET {url} params={params}")
             resp = session.get(url, params=params, timeout=30)
             if DEBUG: print(f"    [DEBUG] {resp.status_code}: {resp.text[:500]}")
-            if resp.status_code == 200: return resp.json()
+            if resp.status_code == 200:
+                return resp.json()
             if resp.status_code == 503 and attempt < MAX_RETRIES - 1:
+                print(f"    [WARN] 503, retry {attempt+1}/{MAX_RETRIES}...")
                 time.sleep(RETRY_DELAY); continue
             print(f"    [{resp.status_code}] {endpoint}: {resp.text[:200]}")
             return None
         except Exception as e:
-            if attempt < MAX_RETRIES - 1: time.sleep(RETRY_DELAY)
-            else: print(f"    [ERROR] {e}")
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY)
+            else:
+                print(f"    [ERROR] {e}")
     return None
 
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
-
-def parse_expiration(val):
-    """Parse expired_date from int timestamp or string -> YYYY-MM-DD."""
+def short_date(val):
+    """Parse expired_date (ms timestamp, int, or string) -> M/D/YYYY."""
     if not val: return ""
     if isinstance(val, (int, float)):
         try:
-            ts = val / 1000 if val > 1e12 else val
-            return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+            dt = datetime.fromtimestamp(val / 1000)
+            return f"{dt.month}/{dt.day}/{dt.year}"
         except: return str(val)
     for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"):
-        try: return datetime.strptime(str(val).split(".")[0], fmt).strftime("%Y-%m-%d")
+        try:
+            dt = datetime.strptime(str(val).split(".")[0], fmt)
+            return f"{dt.month}/{dt.day}/{dt.year}"
         except: continue
     return str(val)
 
 
-def license_status(exp_str):
+def lic_status(exp_str):
     if not exp_str: return "", "No License"
-    try: days = (datetime.strptime(exp_str, "%Y-%m-%d").date() - datetime.now().date()).days
-    except: return "", "Unknown"
-    if days < 0: return days, "EXPIRED"
-    if days <= 30: return days, "EXPIRING SOON"
-    return days, "Active"
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d"):
+        try:
+            days = (datetime.strptime(exp_str, fmt).date() - datetime.now().date()).days
+            if days < 0: return days, "EXPIRED"
+            if days <= 30: return days, "EXPIRING SOON"
+            return days, "Active"
+        except: continue
+    return "", "Unknown"
 
 
-def device_status(device):
+def dev_status(device):
     info = device.get("information", {})
     if not isinstance(info, dict): info = {}
     s = info.get("status", device.get("status", "unknown"))
@@ -82,41 +99,36 @@ def device_status(device):
     return str(s).capitalize() if s else "Unknown"
 
 
-def device_ip(device):
+def dev_ip(device):
     info = device.get("information", {})
     if not isinstance(info, dict): info = {}
     return info.get("wan_ip", "") or info.get("ip", "") or device.get("ip", "")
 
 
-# ─── Main ────────────────────────────────────────────────────────────────────
-
-AP_COLS = ["organization", "hierarchy_view", "network", "device_name", "model",
-           "mac", "ip", "status", "license_expiration", "days_until_expiration", "license_status"]
-SW_COLS = ["organization", "hierarchy_view", "network", "device_name", "device_type", "model",
-           "mac", "ip", "status", "license_expiration", "days_until_expiration", "license_status"]
+AP_COLS = ["network", "device_name", "model", "mac", "ip", "status",
+           "license_expiration", "days_until_expiration", "license_status"]
+SW_COLS = ["network", "device_name", "device_type", "model", "mac", "ip", "status",
+           "license_expiration", "days_until_expiration", "license_status"]
 
 
 def main():
     print("EnGenius Cloud - Device & License Export")
     print("=" * 60)
 
-    api_key = load_api_key()
-    session = requests.Session()
-    session.headers.update({"api-key": api_key, "Content-Type": "application/json", "Accept": "application/json"})
-
-    orgs = api_get(session, "/user/orgs")
+    orgs = api_get("/user/orgs")
     if not orgs: print("[FATAL] Cannot reach API"); sys.exit(1)
     if isinstance(orgs, dict): orgs = [orgs]
     print(f"[OK] {len(orgs)} org(s)\n")
 
-    state_data = {}  # hv_name -> {"aps": [], "switches": []}
+    state_data = {}
+    net_to_hv = {}
 
     for org in orgs:
         org_id = org.get("id") or org.get("_id")
         org_name = org.get("name", "Unknown")
         print(f"[ORG] {org_name}")
 
-        hvs = api_get(session, f"/orgs/{org_id}/hvs")
+        hvs = api_get(f"/orgs/{org_id}/hvs")
         if not hvs: continue
         if isinstance(hvs, dict): hvs = [hvs]
 
@@ -125,11 +137,14 @@ def main():
             hv_name = hv.get("name", "root")
             networks = hv.get("networks", [])
             if not networks:
-                nd = api_get(session, f"/orgs/{org_id}/hvs/{hv_id}/networks")
+                nd = api_get(f"/orgs/{org_id}/hvs/{hv_id}/networks")
                 if nd: networks = nd if isinstance(nd, list) else nd.get("networks", [])
 
             print(f"\n  [HV] {hv_name} ({len(networks)} networks)")
             if hv_name not in state_data: state_data[hv_name] = {"aps": [], "switches": []}
+
+            for net in networks:
+                net_to_hv[net.get("name", "")] = hv_name
 
             for net in networks:
                 net_id = net.get("id") or net.get("_id")
@@ -138,60 +153,99 @@ def main():
                 ac, sc = 0, 0
 
                 # APs
-                resp = api_get(session, f"/orgs/{org_id}/hvs/{hv_id}/networks/{net_id}/devices/aps", {"count": 500})
+                resp = api_get(f"/orgs/{org_id}/hvs/{hv_id}/networks/{net_id}/devices/aps", params={"count": 500})
                 if resp:
                     for ap in (resp.get("aps", resp.get("devices", [])) if isinstance(resp, dict) else resp):
-                        exp = parse_expiration(ap.get("expired_date", ""))
-                        days, stat = license_status(exp)
+                        exp = short_date(ap.get("expired_date"))
+                        days, stat = lic_status(exp)
                         state_data[hv_name]["aps"].append({
-                            "organization": org_name, "hierarchy_view": hv_name, "network": net_name,
-                            "device_name": ap.get("name", ""), "model": ap.get("model", ""),
-                            "mac": ap.get("mac", ""), "ip": device_ip(ap), "status": device_status(ap),
-                            "license_expiration": exp, "days_until_expiration": days if days != "" else "",
+                            "network": net_name, "device_name": ap.get("name", ""),
+                            "model": ap.get("model", ""), "mac": ap.get("mac", ""),
+                            "ip": dev_ip(ap), "status": dev_status(ap),
+                            "license_expiration": exp,
+                            "days_until_expiration": days if days != "" else "",
                             "license_status": stat
                         })
                         ac += 1
 
                 # Switches
-                resp = api_get(session, f"/orgs/{org_id}/hvs/{hv_id}/networks/{net_id}/devices/switches", {"count": 500})
+                resp = api_get(f"/orgs/{org_id}/hvs/{hv_id}/networks/{net_id}/devices/switches", params={"count": 500})
                 if resp:
                     for sw in (resp.get("switches", resp.get("devices", [])) if isinstance(resp, dict) else resp):
-                        exp = parse_expiration(sw.get("expired_date", ""))
-                        days, stat = license_status(exp)
+                        exp = short_date(sw.get("expired_date"))
+                        days, stat = lic_status(exp)
                         state_data[hv_name]["switches"].append({
-                            "organization": org_name, "hierarchy_view": hv_name, "network": net_name,
-                            "device_name": sw.get("name", ""), "device_type": "Switch",
-                            "model": sw.get("model", ""), "mac": sw.get("mac", ""),
-                            "ip": device_ip(sw), "status": device_status(sw),
-                            "license_expiration": exp, "days_until_expiration": days if days != "" else "",
+                            "network": net_name, "device_name": sw.get("name", ""),
+                            "device_type": "Switch", "model": sw.get("model", ""),
+                            "mac": sw.get("mac", ""), "ip": dev_ip(sw),
+                            "status": dev_status(sw), "license_expiration": exp,
+                            "days_until_expiration": days if days != "" else "",
                             "license_status": stat
                         })
                         sc += 1
 
                 print(f" -> {ac} APs, {sc} switches")
 
-        # Switch extenders (inventory only, no /devices/ endpoint)
-        ext_resp = api_get(session, f"/orgs/{org_id}/inventory/devices", {"type": "switch_extender"})
-        if ext_resp:
-            ext_list = ext_resp if isinstance(ext_resp, list) else ext_resp.get("devices", ext_resp.get("data", []))
-            if ext_list:
-                print(f"\n  [EXTENDERS] {len(ext_list)} switch extender(s)")
-                for ext in ext_list:
-                    ext_hv = ext.get("hv_name", "") or (list(state_data.keys())[0] if state_data else "Unknown")
-                    if ext_hv not in state_data: state_data[ext_hv] = {"aps": [], "switches": []}
-                    exp = parse_expiration(ext.get("expired_date") or ext.get("expiration_date", ""))
-                    days, stat = license_status(exp)
-                    state_data[ext_hv]["switches"].append({
-                        "organization": org_name, "hierarchy_view": ext_hv,
-                        "network": ext.get("network_name", ""),
-                        "device_name": ext.get("name", ""), "device_type": "Switch Extender",
-                        "model": ext.get("model", ""), "mac": ext.get("mac", ""),
-                        "ip": ext.get("ip", ""), "status": device_status(ext),
-                        "license_expiration": exp, "days_until_expiration": days if days != "" else "",
-                        "license_status": stat
-                    })
+        # ── Switch Extenders ──────────────────────────────────────────
+        # Copied from working engenius_switch_extender_export.py
+        print(f"\n  [INFO] Querying inventory for type=switch_extender...")
+        result = api_get(f"/orgs/{org_id}/inventory", params={"type": "switch_extender", "count": 1000})
 
-    # ─── Write CSVs ──────────────────────────────────────────────────────────
+        if not result:
+            print("  [WARN] No results from inventory query")
+        else:
+            devices = result.get("devices", []) if isinstance(result, dict) else result
+            api_size = result.get("size", len(devices)) if isinstance(result, dict) else len(devices)
+            print(f"  [INFO] API reports {api_size} switch extender(s), returned {len(devices)}")
+
+            if DEBUG and devices:
+                print(f"  [DEBUG] Extender keys: {list(devices[0].keys())}")
+                print(f"  [DEBUG] Sample: {json.dumps(devices[0], indent=2, default=str)[:500]}")
+
+            for dev in devices:
+                # Parse expiration exactly like working script
+                expired_date = dev.get("expired_date")
+                exp_str = ""
+                days_left = ""
+                if expired_date:
+                    try:
+                        exp_dt = datetime.fromtimestamp(expired_date / 1000)
+                        exp_str = f"{exp_dt.month}/{exp_dt.day}/{exp_dt.year}"
+                        delta = exp_dt - datetime.now()
+                        days_left = delta.days
+                    except:
+                        pass
+
+                if days_left != "":
+                    if days_left < 0: stat = "EXPIRED"
+                    elif days_left <= 30: stat = "EXPIRING SOON"
+                    else: stat = "Active"
+                else:
+                    stat = "No License"
+
+                # Place into correct state
+                ext_net = dev.get("network_name", "")
+                ext_hv = net_to_hv.get(ext_net, "")
+                if not ext_hv:
+                    ext_hv = list(state_data.keys())[0] if state_data else "Unknown"
+                if ext_hv not in state_data:
+                    state_data[ext_hv] = {"aps": [], "switches": []}
+
+                state_data[ext_hv]["switches"].append({
+                    "network": ext_net,
+                    "device_name": dev.get("name", ""),
+                    "device_type": "Switch Extender",
+                    "model": dev.get("model", ""),
+                    "mac": dev.get("mac", ""),
+                    "ip": "",
+                    "status": "N/A",
+                    "license_expiration": exp_str,
+                    "days_until_expiration": days_left if days_left != "" else "",
+                    "license_status": stat
+                })
+                print(f"    + {dev.get('name', '?')} ({dev.get('model', '?')}) -> {ext_hv}")
+
+    # ─── Write CSVs ──────────────────────────────────────────────────────
     if not any(d["aps"] or d["switches"] for d in state_data.values()):
         print("\n[WARN] No devices found."); sys.exit(1)
 
@@ -210,7 +264,6 @@ def main():
                 w = csv.DictWriter(f, fieldnames=cols); w.writeheader(); w.writerows(rows)
             print(f"  {state} - {label}: {len(rows)}")
 
-    # Summary
     print(f"\n{'='*60}\nSUMMARY\n{'='*60}")
     for state, data in state_data.items():
         all_d = data["aps"] + data["switches"]
@@ -218,7 +271,9 @@ def main():
         exp = sum(1 for d in all_d if d["license_status"] == "EXPIRED")
         soon = sum(1 for d in all_d if d["license_status"] == "EXPIRING SOON")
         ok = sum(1 for d in all_d if d["license_status"] == "Active")
-        print(f"  {state}: {len(data['aps'])} APs, {len(data['switches'])} switches ({ok} active, {soon} expiring, {exp} expired)")
+        ext = sum(1 for d in data["switches"] if d.get("device_type") == "Switch Extender")
+        sw = len(data["switches"]) - ext
+        print(f"  {state}: {len(data['aps'])} APs, {sw} switches, {ext} extenders ({ok} active, {soon} expiring, {exp} expired)")
     print(f"\nOutput: {out}/")
 
 

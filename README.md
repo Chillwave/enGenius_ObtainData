@@ -136,7 +136,7 @@ California - Switches.csv
 ...
 ```
 
-**AP Columns:** organization, hierarchy_view, network, device_name, model, mac, ip, status, license_expiration, days_until_expiration, license_status
+**AP Columns:** network, device_name, model, mac, ip, status, license_expiration, days_until_expiration, license_status
 
 **Switch Columns:** Same as above + device_type (Switch / Switch Extender)
 
